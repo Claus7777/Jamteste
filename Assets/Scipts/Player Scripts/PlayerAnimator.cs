@@ -21,8 +21,9 @@ namespace TarodevController {
         [SerializeField, Range(1f, 3f)] private float _maxIdleSpeed = 2;
         [SerializeField] private float _maxParticleFallSpeed = -40;
         [SerializeField] int  currentState;
-        [SerializeField] bool idleState, walkState, landState;
+        [SerializeField] bool landState;
         [SerializeField, Range(0f, 1f) ] private float _landingAnimTime = 0.2f;
+        [SerializeField] private float _parryAnimTime = 0.2f;
         float _lockedTill;
 
         private IPlayerController _player;
@@ -55,14 +56,16 @@ namespace TarodevController {
             // Lean while running
             var targetRotVector = new Vector3(0, 0, Mathf.Lerp(-_maxTilt, _maxTilt, Mathf.InverseLerp(-1, 1, _player.Input.X)));
             _anim.transform.rotation = Quaternion.RotateTowards(_anim.transform.rotation, Quaternion.Euler(targetRotVector), _tiltSpeed * Time.deltaTime);
-           
+
 
             // Speed up idle while running
             // _anim.SetFloat(Idle, Mathf.Lerp(1, _maxIdleSpeed, Mathf.Abs(_player.Input.X)));
 
             // Splat
-            if (_player.LandingThisFrame) {
+            if (_player.LandingThisFrame)
+            {
                 _source.PlayOneShot(_footsteps[Random.Range(0, _footsteps.Length)]);
+                landState = true;
             }
 
             // Jump effects
@@ -83,7 +86,7 @@ namespace TarodevController {
                 _landParticles.transform.localScale = Vector3.one * Mathf.InverseLerp(0, _maxParticleFallSpeed, _movement.y);
                 SetColor(_landParticles);
                 _landParticles.Play();
-                landState = true;
+                
             }
             else if (_playerGrounded && !_player.Grounded) {
                 _playerGrounded = false;
@@ -101,17 +104,24 @@ namespace TarodevController {
 
         int GetState()
         {
+            //Se alguma animaçao não-cancelável ainda tá tocando, não mudar
             if (Time.time < _lockedTill) return currentState;
 
             //Ordenado em ordem de prioridade
-
-            if (landState) {
-                landState = false;
-                return LockState(Land, _landingAnimTime);
+            if (_player.Input.Block)
+            {
+                if (_player.ParryingThisFrame) return LockState(Parry, _parryAnimTime);
+                else return LockState(Blocking, _parryAnimTime) ;
             }
-            if (_playerGrounded) return _player.Input.X == 0? Idle : Walk;
+            if (landState && _player.Input.X == 0)
+            {
+                landState = false;
+                return LockState(Land, _landingAnimTime); ;
+            }
+            else if (landState) landState = false;
+            if (_playerGrounded) return _player.Input.X == 0? Idle : Walk;            
+
             return _player.Velocity.y > 0 ? Jump : Falling;
-            
 
             int LockState(int s, float t)
             {
@@ -141,6 +151,9 @@ namespace TarodevController {
         private static readonly int Walk = Animator.StringToHash("JammaWalk");
         private static readonly int Run = Animator.StringToHash("JammaRun");
         private static readonly int Land = Animator.StringToHash("JammaLand");
+        private static readonly int Parry = Animator.StringToHash("JammaParry");
+        private static readonly int Blocking = Animator.StringToHash("JammaBlock");
+        private static readonly int Rolling = Animator.StringToHash("JammaRoll");
 
         #endregion
     }

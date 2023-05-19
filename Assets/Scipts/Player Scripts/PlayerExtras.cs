@@ -8,6 +8,7 @@ namespace TarodevController {
         public float X,Y;
         public bool JumpDown;
         public bool JumpUp;
+        public bool Block;
     }
 
     public interface IPlayerController {
@@ -15,6 +16,8 @@ namespace TarodevController {
         public FrameInput Input { get; }
         public bool JumpingThisFrame { get; }
         public bool LandingThisFrame { get; }
+        public bool ParryingThisFrame { get; }
+        public bool BlockingThisFrame { get; }
         public Vector3 RawMovement { get; }
         public bool Grounded { get; }
     }

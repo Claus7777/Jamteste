@@ -16,9 +16,21 @@ namespace TarodevController {
         public FrameInput Input { get; private set; }
         public bool JumpingThisFrame { get; private set; }
         public bool LandingThisFrame { get; private set; }
+        public bool ParryingThisFrame { get; private set; }
+        public bool BlockingThisFrame { get; private set; }
         public Vector3 RawMovement { get; private set; }
         public bool Grounded => _colDown;
         bool moveOK = true;
+
+        [SerializeField] private enum State
+        {
+            Blocking,
+            Rolling,
+            Attacking,
+            Normal
+        }
+
+        [SerializeField] private State state { get; set; }
 
         private Vector3 _lastPosition;
         private float _currentHorizontalSpeed, _currentVerticalSpeed;
@@ -36,15 +48,42 @@ namespace TarodevController {
 
             GatherInput();
             RunCollisionChecks();
+            CheckPossibleStateChange();
 
-            CalculateWalk(); // Horizontal movement
-            CalculateJumpApex(); // Affects fall speed, so calculate before gravity
-            CalculateGravity(); // Vertical movement
-            CalculateJump(); // Possibly overrides vertical
+            switch (state){
+                case State.Normal:
+         
+                    CalculateWalk(); // Horizontal movement
+                    CalculateJumpApex(); // Affects fall speed, so calculate before gravity
+                    CalculateGravity(); // Vertical movement
+                    CalculateJump(); // Possibly overrides vertical
 
-            if(moveOK) MoveCharacter(); // Actually perform the axis movement
+                    MoveCharacter(); // Actually perform the axis movement
+                    break;
+
+                case State.Blocking:
+                    JammaParry(); //Manda o parry
+                    JammaBlock(); //Segura o block
+                    break;
+
+                case State.Rolling:
+                    CalculateRoll();
+                    break;
+
+                case State.Attacking:
+                    SummonFire();
+                    break;
+            }
+
+            Debug.Log(state);
         }
 
+
+        void CheckPossibleStateChange()
+        {
+            if (Input.Block && Grounded) state = State.Blocking;
+            
+        }
 
         #region Gather Input
 
@@ -52,7 +91,8 @@ namespace TarodevController {
             Input = new FrameInput {
                 JumpDown = UnityEngine.Input.GetButtonDown("Jump"),
                 JumpUp = UnityEngine.Input.GetButtonUp("Jump"),
-                X = UnityEngine.Input.GetAxisRaw("Horizontal")
+                X = UnityEngine.Input.GetAxisRaw("Horizontal"),
+                Block = UnityEngine.Input.GetButtonDown("Fire1")
             };
             if (Input.JumpDown) {
                 _lastJumpPressed = Time.time;
@@ -146,6 +186,41 @@ namespace TarodevController {
 
         #region Abilities
 
+        [Header("HABILIDADES")]
+        [SerializeField] private float _parryTiming;
+        [SerializeField] private AnimationCurve rollCurve;
+        private void JammaParry(){
+            float parryLength = Time.time + _parryTiming;
+
+            if(Time.time < parryLength)
+            {
+                ParryingThisFrame = true;
+            }
+            ParryingThisFrame = false;
+            JammaBlock();
+        }
+
+        private void JammaBlock() {
+            if (Input.Block && Input.X != 0)
+            {
+                state = State.Rolling;
+                return;
+            }
+            if (Input.Block)
+            {
+                BlockingThisFrame = true;
+            }
+            else BlockingThisFrame = false;
+            state = State.Normal;
+        }
+
+        private void CalculateRoll() {
+            Debug.Log("Rolling Rollling Rolling Rolling");
+        }
+
+        private void SummonFire() {
+
+        }
         //Parry, Shield, Roll, invocação
 
         #endregion
@@ -248,7 +323,7 @@ namespace TarodevController {
 
             // End the jump early if button released
             if (!_colDown && Input.JumpUp && !_endedJumpEarly && Velocity.y > 0) {
-                // _currentVerticalSpeed = 0;
+                //_currentVerticalSpeed = 0;
                 _endedJumpEarly = true;
             }
 
