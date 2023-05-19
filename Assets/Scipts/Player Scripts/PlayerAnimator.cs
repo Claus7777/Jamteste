@@ -26,6 +26,7 @@ namespace TarodevController {
         [SerializeField] private float _parryAnimTime = 0.2f;
         float _lockedTill;
 
+        private PlayerController _playerController;
         private IPlayerController _player;
         private bool _playerGrounded;
         private ParticleSystem.MinMaxGradient _currentGradient;
@@ -108,11 +109,10 @@ namespace TarodevController {
             if (Time.time < _lockedTill) return currentState;
 
             //Ordenado em ordem de prioridade
-            if (_player.Input.Block)
-            {
-                if (_player.ParryingThisFrame) return LockState(Parry, _parryAnimTime);
-                else return LockState(Blocking, _parryAnimTime) ;
-            }
+            //if (currentState == Parry)
+            //{
+            //    if (_player.ParryingThisFrame) return LockState(Parry, _parryAnimTime);
+            //}
             if (landState && _player.Input.X == 0)
             {
                 landState = false;
@@ -136,6 +136,12 @@ namespace TarodevController {
 
         private void OnEnable() {
             _moveParticles.Play();
+        }
+
+        public void OnAnimationChanged(int newAnim)
+        {
+            
+            currentState = newAnim;
         }
 
         void SetColor(ParticleSystem ps) {

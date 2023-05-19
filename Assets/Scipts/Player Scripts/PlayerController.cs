@@ -22,18 +22,23 @@ namespace TarodevController {
         public bool Grounded => _colDown;
         bool moveOK = true;
 
+        public delegate void AnimationChanger(int animHash);
+        public event AnimationChanger animationChanged;
         [SerializeField] private enum State
         {
             Blocking,
+            Parrying,
             Rolling,
             Attacking,
             Normal
         }
 
-        [SerializeField] private State state { get; set; }
+        [SerializeField] private State state;
+        private State lastState;
 
         private Vector3 _lastPosition;
         private float _currentHorizontalSpeed, _currentVerticalSpeed;
+        private float _parryStart;
 
         // This is horrible, but for some reason colliders are not fully established when update starts...
         private bool _active;
@@ -48,23 +53,35 @@ namespace TarodevController {
 
             GatherInput();
             RunCollisionChecks();
-            CheckPossibleStateChange();
+
+            lastState = state;
 
             switch (state){
                 case State.Normal:
-         
+                    CheckforSkillState();
                     CalculateWalk(); // Horizontal movement
                     CalculateJumpApex(); // Affects fall speed, so calculate before gravity
                     CalculateGravity(); // Vertical movement
                     CalculateJump(); // Possibly overrides vertical
 
+
                     MoveCharacter(); // Actually perform the axis movement
                     break;
 
-                case State.Blocking:
-                    JammaParry(); //Manda o parry
-                    JammaBlock(); //Segura o block
+                case State.Parrying:
+                    if (lastState != State.Parrying)
+                    {
+                        _parryStart = Time.time + _parryTiming;
+                        JammaParry(_parryStart); //Manda fazer parry e a frame que o parry começou
+                        break;
+                    }
+                    JammaParry(_parryStart - Time.deltaTime);
                     break;
+
+                case State.Blocking:
+                    JammaBlock();
+                    break;
+                    
 
                 case State.Rolling:
                     CalculateRoll();
@@ -78,11 +95,12 @@ namespace TarodevController {
             Debug.Log(state);
         }
 
-
-        void CheckPossibleStateChange()
+        private void CheckforSkillState()
         {
-            if (Input.Block && Grounded) state = State.Blocking;
-            
+            if (Input.Block)
+            {
+
+            }
         }
 
         #region Gather Input
@@ -189,15 +207,22 @@ namespace TarodevController {
         [Header("HABILIDADES")]
         [SerializeField] private float _parryTiming;
         [SerializeField] private AnimationCurve rollCurve;
-        private void JammaParry(){
-            float parryLength = Time.time + _parryTiming;
-
-            if(Time.time < parryLength)
+        private void JammaParry(float parryTime)
+        {
+            if (Time.time < parryTime)
             {
                 ParryingThisFrame = true;
-            }
+                Debug.Log("Parrying!");
+
+                if (animationChanged != null) //checa se o PlayerAnimator está observando
+                {
+                    animationChanged(Animator.StringToHash("JammaParry"));
+                }
+                return;
+            } else
             ParryingThisFrame = false;
-            JammaBlock();
+            animationChanged(Animator.StringToHash("JammaBlock"));
+            state = State.Blocking;
         }
 
         private void JammaBlock() {
@@ -215,7 +240,7 @@ namespace TarodevController {
         }
 
         private void CalculateRoll() {
-            Debug.Log("Rolling Rollling Rolling Rolling");
+            state = State.Normal;
         }
 
         private void SummonFire() {
