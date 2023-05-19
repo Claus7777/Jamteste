@@ -784,6 +784,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 967589732}
     - target: {fileID: 45607340346192518, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
+      propertyPath: _parryAnimTime
+      value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 45607340346192518, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
       propertyPath: _landingAnimTime
       value: 0.133
       objectReference: {fileID: 0}
@@ -794,6 +798,14 @@ PrefabInstance:
     - target: {fileID: 6432609860406773168, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
       propertyPath: _state
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6432609860406773168, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
+      propertyPath: _ParryTiming
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6432609860406773168, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
+      propertyPath: _parryTiming
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 6432609860406773169, guid: 42303504a4fc90a43bc5178df9876bf2, type: 3}
       propertyPath: m_Name
