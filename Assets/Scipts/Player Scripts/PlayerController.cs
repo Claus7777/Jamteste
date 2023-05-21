@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
+using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace TarodevController {
     /// <summary>
@@ -18,12 +21,16 @@ namespace TarodevController {
         public bool LandingThisFrame { get; private set; }
         public bool ParryingThisFrame { get; private set; }
         public bool BlockingThisFrame { get; private set; }
+        public bool RollingThisFrame { get; private set; }
         public Vector3 RawMovement { get; private set; }
+
         public bool Grounded => _colDown;
-        bool moveOK = true;
+        
 
         public delegate void AnimationChanger(int animHash);
         public event AnimationChanger animationChanged;
+
+        //Coisa de state
         [SerializeField] private enum State
         {
             Blocking,
@@ -32,13 +39,14 @@ namespace TarodevController {
             Attacking,
             Normal
         }
-
         [SerializeField] private State state;
         private State lastState;
 
+
+        //posicoes e velocidade
         private Vector3 _lastPosition;
         private float _currentHorizontalSpeed, _currentVerticalSpeed;
-        private float _parryStart;
+        private float _parryStart, _parryEnd;
 
         // This is horrible, but for some reason colliders are not fully established when update starts...
         private bool _active;
@@ -55,7 +63,15 @@ namespace TarodevController {
             RunCollisionChecks();
 
             lastState = state;
+            if (_rollingCD != 0)
+            {
+                if (Time.time >= _rollingCD)
+                {
+                    _rollingCD = 0;
+                }
+            }
 
+            //State Machine
             switch (state){
                 case State.Normal:
                     CheckforSkillState();
@@ -69,13 +85,15 @@ namespace TarodevController {
                     break;
 
                 case State.Parrying:
-                    if (lastState != State.Parrying)
+                    if (ParryingThisFrame == false)
                     {
-                        _parryStart = Time.time + _parryTiming;
-                        JammaParry(_parryStart); //Manda fazer parry e a frame que o parry começou
+                        _parryEnd = Time.time + _parryLength;
+                        _parryStart = Time.time;
+                        JammaParry(_parryStart, _parryEnd); //Manda fazer parry e a frame que o parry começou
                         break;
                     }
-                    JammaParry(_parryStart - Time.deltaTime);
+                    _parryStart += Time.deltaTime;
+                    JammaParry(_parryStart, _parryEnd);
                     break;
 
                 case State.Blocking:
@@ -84,7 +102,19 @@ namespace TarodevController {
                     
 
                 case State.Rolling:
-                    CalculateRoll();
+
+                    if (RollingThisFrame == false)
+                    {
+                        _currentHorizontalSpeed = 0;
+                        _rollEnding = Time.time + rollLength;
+                        _rollStartFrame = Time.time;
+                        rollingX = Input.X;
+                        CalculateRoll(_rollStartFrame, _rollEnding, rollingX) ;
+                        break;
+                    }
+                    else
+                        _rollStartFrame += Time.deltaTime;
+                        CalculateRoll(_rollStartFrame, _rollEnding, rollingX);
                     break;
 
                 case State.Attacking:
@@ -93,15 +123,31 @@ namespace TarodevController {
             }
 
             Debug.Log(state);
+            if (ParryingThisFrame) Debug.Log("Parrying this frame");
         }
 
         private void CheckforSkillState()
         {
-            if (Input.Block)
+            for (int i = 0; i < 59; i++) //checar o buffer pra ver se o botão de block foi solto alguma hora nas ultimas 60 frames
             {
-
+                {
+                    if (!inputBuffer[(Time.frameCount - i) % bufferSize].Block)
+                    {
+                        if (Input.Block && Grounded && _rollingCD == 0)
+                        {
+                            state = State.Parrying;
+                        }
+                    }
+                }
             }
         }
+
+        #region Buffer
+
+        static int bufferSize = 60;
+        [SerializeField] FrameInput[] inputBuffer = new FrameInput[bufferSize];
+
+        #endregion
 
         #region Gather Input
 
@@ -110,11 +156,12 @@ namespace TarodevController {
                 JumpDown = UnityEngine.Input.GetButtonDown("Jump"),
                 JumpUp = UnityEngine.Input.GetButtonUp("Jump"),
                 X = UnityEngine.Input.GetAxisRaw("Horizontal"),
-                Block = UnityEngine.Input.GetButtonDown("Fire1")
+                Block = UnityEngine.Input.GetButton("Fire1")
             };
             if (Input.JumpDown) {
                 _lastJumpPressed = Time.time;
             }
+            inputBuffer[(Time.frameCount % bufferSize)] = Input;
         }
 
         #endregion
@@ -205,48 +252,99 @@ namespace TarodevController {
         #region Abilities
 
         [Header("HABILIDADES")]
-        [SerializeField] private float _parryTiming;
-        [SerializeField] private AnimationCurve rollCurve;
-        private void JammaParry(float parryTime)
-        {
-            if (Time.time < parryTime)
-            {
-                ParryingThisFrame = true;
-                Debug.Log("Parrying!");
+        [SerializeField] private float _parryLength;
 
-                if (animationChanged != null) //checa se o PlayerAnimator está observando
+        
+        [SerializeField] float rollLength;
+        [SerializeField] private AnimationCurve rollCurve;
+        [SerializeField] private float rollingCooldown;
+        private float _rollEnding;
+        private float _rollStartFrame;
+        private float rollingX;
+        [SerializeField] private float _rollingCD;
+
+        private void JammaParry(float parryStart, float parryEnd)
+        {  
+            //Checar o buffer pra ver se o player quis rolar ao invés de parry vendo se ouve mudança de 0 para não-zero juntamente com apertar block em um intervalo de X frames
+            bool possibleRoll = false;
+            for (int i = 0; i < 10; i++) //o i checa quantas frame a função volta pra ver se pode mudar pra roll ou não
+            {
+                ParryingThisFrame = false;
+
+                if (inputBuffer[(Time.frameCount - i) % bufferSize].X != 0) //ve as ultimas i frames, se ouve mudança de neutro para alguma direção, rolar
                 {
-                    animationChanged(Animator.StringToHash("JammaParry"));
+                    possibleRoll = true;
                 }
-                return;
-            } else
+
+                if (possibleRoll)
+                {
+                    if (inputBuffer[(Time.frameCount - i) % bufferSize].X == 0 || inputBuffer[(Time.frameCount - i) % bufferSize].X != Input.X)
+                    {
+                        state = State.Rolling;
+                        return;
+                    }
+                }
+            }
+
+            if (parryStart < parryEnd)
+            {
+                ParryingThisFrame = true;;
+            }
+            else { 
             ParryingThisFrame = false;
-            animationChanged(Animator.StringToHash("JammaBlock"));
-            state = State.Blocking;
+                if (Input.Block && Grounded) state = State.Blocking;
+                else state = State.Normal;
+            }
+
         }
 
         private void JammaBlock() {
             if (Input.Block && Input.X != 0)
             {
-                state = State.Rolling;
-                return;
+                for (int i = 0; i < 60; i++) //ver o buffer pra ver se o jogador só não ficou segurando pra frente
+                {
+                    if (inputBuffer[(Time.frameCount - i) % bufferSize].X == 0) //ve as ultimas i frames, se ouve o jogador soltou a direção em algum momento, rolar
+                    {
+                        BlockingThisFrame = false;
+                        state = State.Rolling;
+                        return;
+                    }
+                }   
             }
             if (Input.Block)
             {
                 BlockingThisFrame = true;
             }
-            else BlockingThisFrame = false;
-            state = State.Normal;
+            else
+            {
+                BlockingThisFrame = false;
+                state = State.Normal;
+            }
         }
 
-        private void CalculateRoll() {
-            state = State.Normal;
+        private void CalculateRoll(float rollStart, float rollEnd, float rollingDirection)
+        {
+            _coyoteUsable = true;
+            if (rollStart < rollEnd && _rollingCD == 0)//Se a frame atual ainda nao chegou na frame onde o roll acaba E o roll não estiver em cooldown, rolar
+            {
+                RollingThisFrame = true;
+                _currentHorizontalSpeed += rollingDirection * (rollCurve.Evaluate(rollStart) * 0.2f);
+                MoveCharacter();
+                CalculateGravity();
+                CalculateJump(); 
+            }
+            else
+            { //parou de rolar, ativa o cooldown e voltamos pro estado normal
+                _rollingCD = Time.time + rollingCooldown;
+                RollingThisFrame = false;
+                CalculateWalk();
+                state = State.Normal;
+            }
         }
 
         private void SummonFire() {
 
         }
-        //Parry, Shield, Roll, invocação
 
         #endregion
 
@@ -263,7 +361,8 @@ namespace TarodevController {
                 _currentHorizontalSpeed += Input.X * _acceleration * Time.deltaTime;
 
                 // clamped by max frame movement
-                _currentHorizontalSpeed = Mathf.Clamp(_currentHorizontalSpeed, -_moveClamp, _moveClamp);
+                if(!RollingThisFrame) _currentHorizontalSpeed = Mathf.Clamp(_currentHorizontalSpeed, -_moveClamp, _moveClamp);
+
 
                 // Apply bonus at the apex of a jump
                 var apexBonus = Mathf.Sign(Input.X) * _apexBonus * _apexPoint;
@@ -373,7 +472,7 @@ namespace TarodevController {
 
             // check furthest movement. If nothing hit, move and don't do extra checks
             var hit = Physics2D.OverlapBox(furthestPoint, _characterBounds.size, 0, _groundLayer);
-            if (!hit) {
+                        if (!hit) {
                 transform.position += move;
                 return;
             }
@@ -383,6 +482,8 @@ namespace TarodevController {
             for (int i = 1; i < _freeColliderIterations; i++) {
                 // increment to check all but furthestPoint - we did that already
                 var t = (float)i / _freeColliderIterations;
+                
+                
                 var posToTry = Vector2.Lerp(pos, furthestPoint, t);
 
                 if (Physics2D.OverlapBox(posToTry, _characterBounds.size, 0, _groundLayer)) {

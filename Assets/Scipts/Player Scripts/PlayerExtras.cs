@@ -18,6 +18,7 @@ namespace TarodevController {
         public bool LandingThisFrame { get; }
         public bool ParryingThisFrame { get; }
         public bool BlockingThisFrame { get; }
+        public bool RollingThisFrame { get; }
         public Vector3 RawMovement { get; }
         public bool Grounded { get; }
     }
